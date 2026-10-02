@@ -1,5 +1,5 @@
-# Notebook
+# Notebooks
 
-The full executed notebook is kept in the local project ZIP because GitHub's text-file API cannot accept notebook binary attachments reliably in this connector.
+The main reproducible workflow is in `train.py`.
 
-Use `Breast_Cancer_Capstone.ipynb` from the project package for the complete EDA and model walkthrough.
+A notebook can be added later for extra experiments, but the dashboard and training process do not depend on a notebook.
