@@ -211,34 +211,19 @@ elif page == "Model Lab":
         f"and Fail Recall of **{best['Fail Recall']*100:.2f}%**."
     )
     st.write("### How the training flow works")
-    st.code(
-        "Raw sensor data
-"
-        "  ↓
-"
-        "Remove high-missing and constant sensors
-"
-        "  ↓
-"
-        "Fill remaining missing values with training median
-"
-        "  ↓
-"
-        "Select top 100 useful sensors
-"
-        "  ↓
-"
-        "Train balanced ML model
-"
-        "  ↓
-"
-        "Check test performance
-"
-        "  ↓
-"
-        "Save best model"
-    )
-
+    st.code("""Raw sensor data
+  ↓
+Remove high-missing and constant sensors
+  ↓
+Fill remaining missing values with training median
+  ↓
+Select top 100 useful sensors
+  ↓
+Train balanced ML model
+  ↓
+Check test performance
+  ↓
+Save best model""")
     st.subheader("Confusion matrix")
     cm = np.array(meta["test_confusion_matrix"])
     fig, ax = plt.subplots(figsize=(5, 4))
