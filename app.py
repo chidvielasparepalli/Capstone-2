@@ -34,12 +34,12 @@ if page=="Executive Overview":
     st.subheader("Project objective")
     st.write("Build a supervised classifier, compare multiple algorithms, handle missing values and class imbalance, and identify the most informative measured attributes.")
     st.subheader("Model comparison")
-    st.dataframe(metrics[["Model","CV Accuracy","Test Accuracy","Class 4 Precision","Class 4 Recall","Class 4 F1"]],use_container_width=True)
+    st.dataframe(metrics[["Model","CV Accuracy","Test Accuracy","Class 4 Precision","Class 4 Recall","Class 4 F1"]],width="stretch")
     fig,ax=plt.subplots(figsize=(9,4))
     chart=metrics.copy(); chart["Test Accuracy %"]=chart["Test Accuracy"]*100
     sns.barplot(data=chart,x="Model",y="Test Accuracy %",ax=ax)
     ax.set_ylim(90,100); ax.set_title("Test Accuracy")
-    st.pyplot(fig,use_container_width=True)
+    st.pyplot(fig,width="stretch")
     st.info("Academic demonstration only. This dashboard is not a medical diagnostic system.")
 
 elif page=="Data & EDA":
@@ -48,16 +48,16 @@ elif page=="Data & EDA":
     c=st.columns(4)
     c[0].metric("Rows",len(df)); c[1].metric("Columns",len(df.columns))
     c[2].metric("Duplicate rows",int(df.duplicated().sum())); c[3].metric("Missing cells",int(df.isna().sum().sum()))
-    st.dataframe(df.head(10),use_container_width=True)
+    st.dataframe(df.head(10),width="stretch")
     st.write("### Target distribution")
     td=target.copy(); td["Class"]=td["Class"].astype(str)
-    fig,ax=plt.subplots(figsize=(7,4)); sns.barplot(data=td,x="Class",y="Count",ax=ax); ax.set_title("Class Distribution"); st.pyplot(fig,use_container_width=True)
-    st.dataframe(df.describe(include="all").T,use_container_width=True)
+    fig,ax=plt.subplots(figsize=(7,4)); sns.barplot(data=td,x="Class",y="Count",ax=ax); ax.set_title("Class Distribution"); st.pyplot(fig,width="stretch")
+    st.dataframe(df.describe(include="all").T,width="stretch")
 
 elif page=="Model Lab":
     st.subheader("🧪 Model Lab")
     st.caption("Stratified 5-fold cross-validation + GridSearchCV + SMOTE inside each training pipeline.")
-    st.dataframe(metrics,use_container_width=True)
+    st.dataframe(metrics,width="stretch")
     st.write(f"**{metrics.iloc[0]['Model']}** has the highest measured test accuracy on the project's fixed test split: **{metrics.iloc[0]['Test Accuracy']*100:.2f}%**.")
     st.write(f"Class 4 recall: **{metrics.iloc[0]['Class 4 Recall']*100:.2f}%**.")
 
@@ -66,8 +66,8 @@ elif page=="Feature Intelligence":
     st.write("Random Forest feature importance ranks predictive attributes; it is not proof of causal relationships.")
     n=st.slider("Top features",5,min(9,len(features)),9)
     top=features.head(n)
-    fig,ax=plt.subplots(figsize=(9,5)); sns.barplot(data=top.sort_values("importance"),x="importance",y="feature",ax=ax); ax.set_title("Most Informative Features"); st.pyplot(fig,use_container_width=True)
-    st.dataframe(top,use_container_width=True)
+    fig,ax=plt.subplots(figsize=(9,5)); sns.barplot(data=top.sort_values("importance"),x="importance",y="feature",ax=ax); ax.set_title("Most Informative Features"); st.pyplot(fig,width="stretch")
+    st.dataframe(top,width="stretch")
 
 elif page=="Prediction":
     st.subheader("🔮 Demo Prediction")
