@@ -1,26 +1,41 @@
-# Management Demo — 5 Minutes
+# 5-Minute Capstone 2 Demo
 
-## 1. Opening
-"This project demonstrates how machine learning can classify the supplied breast-cancer dataset and compare multiple algorithms rather than relying on one model."
+## 1. Problem
 
-## 2. Data Quality
-Show the 699 records, 11 original columns, the ? values in Bare Nuclei, and the removal of the identifier column.
+"Our project studies semiconductor manufacturing sensor data and predicts whether a production example will pass or fail."
 
-## 3. Model Lab
-Show:
-- Random Forest: 96.40%
-- SVM: 96.40%
-- Naive Bayes: 97.12%
+## 2. Dataset
 
-Explain that all three were tuned with GridSearchCV and evaluated using stratified 5-fold cross-validation.
+"We have 1,567 production examples and 590 sensor columns, plus a time column and the Pass/Fail target. The dataset has many missing sensor values, so data cleaning is an important part of the project."
 
-## 4. Feature Intelligence
-Show the top measured attributes and state that feature importance is predictive association, not medical causation.
+## 3. Data analysis
 
-## 5. Demo Prediction
-Enter sample attribute values and show the saved model returning Class 2 or Class 4.
+Show **Data & EDA** and explain:
+
+- missing values
+- target imbalance
+- one sensor distribution
+- one sensor compared with Pass/Fail
+- the correlation heatmap
+- the monthly fail-rate chart
+
+Always read the short **What this tells us** message below the chart.
+
+## 4. Machine learning
+
+"We compare Logistic Regression, SVM, and Balanced Random Forest. We use a stratified test split, five-fold cross-validation, median imputation, feature selection, and imbalance-aware training."
+
+## 5. Prediction
+
+Open **Prediction**.
+
+Choose **First Pass example** and show the prediction.
+Then choose **First Fail example** and show the prediction.
+
+Explain:
+
+"Because the real data has hundreds of sensor columns, it is better to predict using a complete real production example instead of asking the user to type hundreds of numbers."
 
 ## 6. Closing
-"The important outcome is the full ML workflow: data cleansing, imbalance treatment, model tuning, comparison, feature analysis, and deployment as an interactive dashboard."
 
-Academic demonstration only — not a clinical diagnostic system.
+"The goal is not only to train a model. The project also explains the data, handles missing values and class imbalance, compares different models, and provides an easy dashboard for inspection and prediction."
