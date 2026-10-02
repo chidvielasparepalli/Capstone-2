@@ -1,59 +1,98 @@
-# 🧠 Breast Cancer Classification — Capstone 2
+# 🏭 Semiconductor Manufacturing Yield Prediction — Capstone 2
 
-A management-ready machine learning capstone built from the supplied breast cancer dataset.
+## 1. What is this project?
 
-## Project Objective
+This project uses machine learning to study sensor readings from a semiconductor manufacturing process.
 
-Build and compare supervised learning models, handle missing values and class imbalance, identify important attributes, and expose the trained model through a Streamlit dashboard.
+The main question is simple:
 
-## ML Workflow
+> **Can the sensor readings help us predict whether a production example will PASS or FAIL?**
 
-EDA → Data Cleaning → Visualization → Train/Test Split → Standardization → SMOTE → 5-Fold Cross-Validation → GridSearchCV → Model Comparison → Feature Importance → Model Saving → Dashboard
+The project includes data cleaning, statistical analysis, visualisation, machine learning, model comparison, feature importance, and an interactive Streamlit dashboard.
 
-### Models
-- Random Forest
-- Support Vector Machine (SVM)
-- Gaussian Naive Bayes
+## 2. Dataset
 
-### Actual test results
-| Model | Test Accuracy |
-|---|---:|
-| Naive Bayes | **97.12%** |
-| Random Forest | **96.40%** |
-| SVM | **96.40%** |
+The supplied file is `signal-data.csv`.
 
-The current best model by the fixed test split is Naive Bayes (97.12%).
+- Examples: **1,567**
+- Raw sensor columns: **590**
+- Time column: `Time`
+- Target column: `Pass/Fail`
+- Pass label: `-1`
+- Fail label: `1`
+- Missing cells: **41,951**
+- Duplicate rows: **0**
 
-## Dataset
+The classes are imbalanced: most examples are Pass and a smaller group are Fail. Because of this, the project reports **Balanced Accuracy, Fail Precision, Fail Recall, Fail F1, and ROC AUC**, not accuracy alone.
 
-The supplied file contains 699 records and 11 original columns.
+## 3. ML workflow
 
-- Target: `Class`
-- Identifier: `Sample code number` — excluded from model training
-- Missing values: `?` in `Bare Nuclei`
-- Missing numerical values are median-imputed inside the model pipeline.
-- SMOTE is applied only within training folds.
-
-> The raw CSV is intentionally **not committed** to this public repository. Place `breast_cancer_bd.csv` in `data/` locally before retraining.
-
-## Dashboard
-
-The Streamlit dashboard provides:
-- Executive Overview
-- Data & EDA
-- Model Lab
-- Feature Intelligence
-- Interactive Prediction
-
-## Run Locally
-
-```bash
-pip install -r requirements.txt
-python train.py
-streamlit run app.py
+```text
+Signal data
+   ↓
+Explore the data
+   ↓
+Check missing values and duplicates
+   ↓
+Remove sensors with >50% missing values
+   ↓
+Remove constant sensors
+   ↓
+Fill remaining missing values using the training median
+   ↓
+Select the top 100 useful sensors
+   ↓
+Train 3 models
+   ↓
+Compare their results
+   ↓
+Save the best model
+   ↓
+Use the model in the Streamlit dashboard
 ```
 
-## Project Structure
+## 4. Models
+
+The project compares:
+
+- Logistic Regression
+- Support Vector Machine (SVM)
+- Balanced Random Forest
+
+Balanced Random Forest is designed to give more attention to the smaller Fail class.
+
+## 5. Analysis required by Capstone 2
+
+The dashboard contains:
+
+- Data import and exploration
+- Missing-value analysis
+- Data cleaning decisions
+- Statistical summaries
+- Univariate analysis
+- Bivariate analysis
+- Multivariate correlation analysis
+- Time-based analysis
+- Visualisation
+- Model comparison
+- Confusion matrix
+- Feature importance
+- Interactive prediction
+- Simple comments after every major analysis
+
+## 6. How to run
+
+Open PowerShell in the project folder:
+
+```powershell
+pip install -r requirements.txt
+python train.py
+python -m streamlit run app.py
+```
+
+Then open the local Streamlit address shown in the terminal.
+
+## 7. Project structure
 
 ```text
 Capstone-2/
@@ -62,14 +101,20 @@ Capstone-2/
 ├── requirements.txt
 ├── management_demo.md
 ├── data/
+│   └── signal-data.csv
 ├── artifacts/
+│   ├── best_model.pkl
+│   ├── model_results.csv
+│   ├── feature_importance.csv
+│   ├── feature_statistics.csv
+│   ├── missing_summary.csv
+│   ├── target_distribution.csv
+│   ├── correlation_top20.csv
+│   ├── clean_features.csv
+│   └── metadata.json
 └── notebooks/
 ```
 
-## Management Demo
+## 8. Important note
 
-See `management_demo.md` for the recommended 5-minute presentation flow.
-
-## Academic Notice
-
-This project is an academic machine-learning demonstration. It is **not a clinical diagnostic system** and should not be used for medical decisions.
+This is an academic machine-learning project for semiconductor manufacturing yield analysis. A model prediction should be treated as decision support, not as proof that a real production process is safe or unsafe.
