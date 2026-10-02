@@ -1,168 +1,223 @@
-import json, pickle
+"""Train models for semiconductor manufacturing yield prediction."""
+import json
+import pickle
+import warnings
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from imblearn.ensemble import BalancedRandomForestClassifier
+from imblearn.pipeline import Pipeline
+from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
-from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score, confusion_matrix,
+    f1_score, precision_score, recall_score, roc_auc_score,
+)
+from sklearn.model_selection import StratifiedKFold, cross_val_predict, train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.feature_selection")
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data" / "breast_cancer_bd.csv"
+DATA = ROOT / "data" / "signal-data.csv"
 ART = ROOT / "artifacts"
 ART.mkdir(exist_ok=True)
 
-if not DATA.exists():
-    raise FileNotFoundError(
-        f"Dataset not found: {DATA}\n"
-        "Place breast_cancer_bd.csv inside the data folder and run train.py again."
+RANDOM_STATE = 42
+TARGET = "Pass/Fail"
+TIME_COL = "Time"
+MISSING_THRESHOLD = 0.50
+TOP_K = 100
+
+
+def make_pipeline(name: str, k: int) -> Pipeline:
+    common = [
+        ("imputer", SimpleImputer(strategy="median")),
+        ("select", SelectKBest(score_func=f_classif, k=k)),
+    ]
+    if name == "Logistic Regression":
+        steps = common + [
+            ("scaler", StandardScaler()),
+            ("model", LogisticRegression(class_weight="balanced", C=1.0, max_iter=3000, solver="liblinear", random_state=RANDOM_STATE)),
+        ]
+    elif name == "SVM":
+        steps = common + [
+            ("scaler", StandardScaler()),
+            ("model", SVC(C=1.0, kernel="linear", class_weight="balanced", probability=True, random_state=RANDOM_STATE)),
+        ]
+    elif name == "Balanced Random Forest":
+        steps = common + [
+            ("model", BalancedRandomForestClassifier(n_estimators=350, random_state=RANDOM_STATE, n_jobs=-1)),
+        ]
+    else:
+        raise ValueError(name)
+    return Pipeline(steps)
+
+
+def main() -> None:
+    if not DATA.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {DATA}. Put signal-data.csv inside the data folder."
+        )
+
+    df = pd.read_csv(DATA)
+    if TARGET not in df.columns:
+        raise ValueError(f"Required target column '{TARGET}' is missing.")
+    if TIME_COL not in df.columns:
+        raise ValueError(f"Required time column '{TIME_COL}' is missing.")
+
+    raw_shape = df.shape
+    raw_missing_cells = int(df.isna().sum().sum())
+    raw_duplicate_rows = int(df.duplicated().sum())
+
+    sensor_columns = [c for c in df.columns if c not in [TIME_COL, TARGET]]
+    X_raw = df[sensor_columns].apply(pd.to_numeric, errors="coerce")
+    y = pd.to_numeric(df[TARGET], errors="coerce").astype(int)
+
+    missing_rate = X_raw.isna().mean()
+    dropped_high_missing = missing_rate[missing_rate > MISSING_THRESHOLD].index.tolist()
+    X_clean = X_raw.drop(columns=dropped_high_missing)
+    dropped_constant = [c for c in X_clean.columns if X_clean[c].nunique(dropna=True) <= 1]
+    X_clean = X_clean.drop(columns=dropped_constant)
+
+    k = min(TOP_K, X_clean.shape[1])
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_clean, y, test_size=0.20, stratify=y, random_state=RANDOM_STATE
     )
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
-df = pd.read_csv(DATA).replace("?", np.nan)
+    model_names = ["Logistic Regression", "SVM", "Balanced Random Forest"]
+    results = []
+    fitted = {}
 
-required = {"Class", "Sample code number", "Bare Nuclei"}
-missing = required - set(df.columns)
-if missing:
-    raise ValueError(f"Dataset is missing required columns: {sorted(missing)}")
+    for name in model_names:
+        pipe = make_pipeline(name, k)
+        cv_prob = cross_val_predict(pipe, X_train, y_train, cv=cv, method="predict_proba", n_jobs=1)[:, 1]
+        cv_true = (y_train == 1).astype(int)
 
-df["Bare Nuclei"] = pd.to_numeric(df["Bare Nuclei"], errors="coerce")
-df = df.drop_duplicates().copy()
+        best_threshold = 0.50
+        best_balanced = -1.0
+        for threshold in np.arange(0.20, 0.71, 0.01):
+            cv_pred = (cv_prob >= threshold).astype(int)
+            score = balanced_accuracy_score(cv_true, cv_pred)
+            if score > best_balanced:
+                best_balanced = score
+                best_threshold = float(threshold)
 
-X = df.drop(columns=["Class", "Sample code number"])
-y = df["Class"].astype(int)
+        pipe.fit(X_train, y_train)
+        test_prob = pipe.predict_proba(X_test)[:, 1]
+        test_pred_binary = (test_prob >= best_threshold).astype(int)
+        test_true_binary = (y_test == 1).astype(int)
 
-Xtr, Xte, ytr, yte = train_test_split(
-    X, y, test_size=0.20, stratify=y, random_state=42
-)
+        results.append({
+            "Model": name,
+            "CV Balanced Accuracy": float(best_balanced),
+            "Test Accuracy": float(accuracy_score(test_true_binary, test_pred_binary)),
+            "Balanced Accuracy": float(balanced_accuracy_score(test_true_binary, test_pred_binary)),
+            "Fail Precision": float(precision_score(test_true_binary, test_pred_binary, zero_division=0)),
+            "Fail Recall": float(recall_score(test_true_binary, test_pred_binary, zero_division=0)),
+            "Fail F1": float(f1_score(test_true_binary, test_pred_binary, zero_division=0)),
+            "ROC AUC": float(roc_auc_score(test_true_binary, test_prob)),
+            "Probability Threshold": best_threshold,
+        })
+        fitted[name] = pipe
 
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    results_df = pd.DataFrame(results).sort_values(
+        ["Balanced Accuracy", "Fail Recall"], ascending=False
+    ).reset_index(drop=True)
+    best_name = results_df.iloc[0]["Model"]
+    best_model = fitted[best_name]
 
-configs = {
-    "Random Forest": (
-        ImbPipeline([
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-            ("smote", SMOTE(random_state=42)),
-            ("model", RandomForestClassifier(random_state=42, n_jobs=-1)),
-        ]),
-        {
-            "model__n_estimators": [200, 400],
-            "model__max_depth": [None, 10, 20],
-            "model__min_samples_split": [2, 5],
-            "model__max_features": ["sqrt", "log2"],
-        },
-    ),
-    "SVM": (
-        ImbPipeline([
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-            ("smote", SMOTE(random_state=42)),
-            ("model", SVC(probability=True, random_state=42)),
-        ]),
-        {
-            "model__C": [0.1, 1, 10],
-            "model__kernel": ["rbf", "linear"],
-            "model__gamma": ["scale", "auto"],
-        },
-    ),
-    "Naive Bayes": (
-        ImbPipeline([
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-            ("smote", SMOTE(random_state=42)),
-            ("model", GaussianNB()),
-        ]),
-        {
-            "model__var_smoothing": [1e-11, 1e-9, 1e-7, 1e-5],
-        },
-    ),
-}
+    with open(ART / "best_model.pkl", "wb") as handle:
+        pickle.dump(best_model, handle)
+    results_df.to_csv(ART / "model_results.csv", index=False)
 
-rows = []
-fitted = {}
+    target_distribution = pd.DataFrame({
+        "Pass/Fail": [-1, 1],
+        "Count": [int((y == -1).sum()), int((y == 1).sum())],
+        "Label": ["Pass", "Fail"],
+    })
+    target_distribution.to_csv(ART / "target_distribution.csv", index=False)
 
-for name, (pipe, grid) in configs.items():
-    gs = GridSearchCV(
-        pipe,
-        grid,
-        cv=cv,
-        scoring="accuracy",
-        n_jobs=-1,
-        refit=True,
+    missing_summary = (
+        pd.DataFrame({
+            "Feature": X_raw.columns,
+            "Missing Count": X_raw.isna().sum().values,
+            "Missing Percent": X_raw.isna().mean().values * 100,
+        })
+        .sort_values("Missing Percent", ascending=False)
+        .reset_index(drop=True)
     )
-    gs.fit(Xtr, ytr)
-    pred = gs.predict(Xte)
+    missing_summary.to_csv(ART / "missing_summary.csv", index=False)
 
-    rows.append({
-        "Model": name,
-        "CV Accuracy": gs.best_score_,
-        "Test Accuracy": accuracy_score(yte, pred),
-        "Class 4 Precision": precision_score(yte, pred, pos_label=4, zero_division=0),
-        "Class 4 Recall": recall_score(yte, pred, pos_label=4, zero_division=0),
-        "Class 4 F1": f1_score(yte, pred, pos_label=4, zero_division=0),
-        "Best Params": json.dumps(gs.best_params_),
-    })
-    fitted[name] = gs.best_estimator_
+    statistics = X_clean.describe().T
+    statistics["Missing Count"] = X_clean.isna().sum()
+    statistics["Missing Percent"] = X_clean.isna().mean() * 100
+    statistics.reset_index(names="Feature").to_csv(ART / "feature_statistics.csv", index=False)
 
-results = pd.DataFrame(rows).sort_values(
-    "Test Accuracy", ascending=False
-).reset_index(drop=True)
+    if best_name == "Balanced Random Forest":
+        feature_model = best_model
+    else:
+        feature_model = make_pipeline("Balanced Random Forest", k)
+        feature_model.fit(X_train, y_train)
 
-best_name = results.iloc[0]["Model"]
+    selector = feature_model.named_steps["select"]
+    selected_names = X_clean.columns[selector.get_support()]
+    tree_model = feature_model.named_steps["model"]
+    importance = (
+        pd.DataFrame({"Feature": selected_names, "Importance": tree_model.feature_importances_})
+        .sort_values("Importance", ascending=False)
+        .reset_index(drop=True)
+    )
+    importance.to_csv(ART / "feature_importance.csv", index=False)
 
-with open(ART / "best_model.pkl", "wb") as f:
-    pickle.dump(fitted[best_name], f)
+    top_corr_features = importance.head(20)["Feature"].tolist()
+    X_clean[top_corr_features].corr(method="spearman").to_csv(ART / "correlation_top20.csv")
+    pd.DataFrame({"Feature": X_clean.columns}).to_csv(ART / "clean_features.csv", index=False)
 
-results.to_csv(ART / "model_results.csv", index=False)
+    best_threshold = float(results_df.loc[results_df["Model"] == best_name, "Probability Threshold"].iloc[0])
+    test_prob = best_model.predict_proba(X_test)[:, 1]
+    test_pred = (test_prob >= best_threshold).astype(int)
+    confusion = confusion_matrix((y_test == 1).astype(int), test_pred).tolist()
 
-# Target distribution used by the Streamlit dashboard.
-target_distribution = (
-    y.value_counts()
-    .sort_index()
-    .rename_axis("Class")
-    .reset_index(name="Count")
-)
-target_distribution.to_csv(ART / "target_distribution.csv", index=False)
+    metadata = {
+        "project": "Semiconductor Manufacturing Yield Prediction",
+        "raw_dataset_shape": list(raw_shape),
+        "raw_sensor_count": len(sensor_columns),
+        "usable_sensor_count": int(X_clean.shape[1]),
+        "selected_sensor_count": int(k),
+        "missing_threshold_percent": MISSING_THRESHOLD * 100,
+        "dropped_high_missing_count": len(dropped_high_missing),
+        "dropped_constant_count": len(dropped_constant),
+        "raw_missing_cells": raw_missing_cells,
+        "raw_duplicate_rows": raw_duplicate_rows,
+        "class_counts": {str(int(label)): int(count) for label, count in y.value_counts().to_dict().items()},
+        "pass_label": -1,
+        "fail_label": 1,
+        "fail_rate_percent": float((y == 1).mean() * 100),
+        "best_model": best_name,
+        "best_probability_threshold": best_threshold,
+        "test_confusion_matrix": confusion,
+        "time_min": str(df[TIME_COL].min()),
+        "time_max": str(df[TIME_COL].max()),
+        "feature_names": X_clean.columns.tolist(),
+        "dropped_high_missing_features": dropped_high_missing,
+        "dropped_constant_features": dropped_constant,
+    }
+    (ART / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-# Random Forest feature importance used by the Streamlit dashboard.
-rf_pipe = ImbPipeline([
-    ("imputer", SimpleImputer(strategy="median")),
-    ("scaler", StandardScaler()),
-    ("smote", SMOTE(random_state=42)),
-    ("model", RandomForestClassifier(
-        n_estimators=400,
-        random_state=42,
-        n_jobs=-1,
-    )),
-])
-rf_pipe.fit(Xtr, ytr)
+    print(results_df.to_string(index=False))
+    print(f"\nBest model: {best_name}")
+    print(f"Raw dataset: {raw_shape[0]} rows x {raw_shape[1]} columns")
+    print(f"Usable sensors after cleaning: {X_clean.shape[1]}")
+    print(f"Dropped high-missing sensors: {len(dropped_high_missing)}")
+    print(f"Dropped constant sensors: {len(dropped_constant)}")
 
-rf_model = rf_pipe.named_steps["model"]
-feature_importance = (
-    pd.DataFrame({
-        "feature": X.columns,
-        "importance": rf_model.feature_importances_,
-    })
-    .sort_values("importance", ascending=False)
-    .reset_index(drop=True)
-)
-feature_importance.to_csv(ART / "feature_importance.csv", index=False)
 
-metadata = {
-    "best_model": best_name,
-    "dataset_shape": list(df.shape),
-    "feature_count": int(X.shape[1]),
-    "target_classes": sorted(y.unique().tolist()),
-}
-(ART / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-
-print(results.to_string(index=False))
-print("\nGenerated artifacts:")
-for path in sorted(ART.iterdir()):
-    print(" -", path.name)
+if __name__ == "__main__":
+    main()
