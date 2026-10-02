@@ -1,0 +1,11 @@
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+imbalanced-learn>=0.12
+matplotlib>=3.9
+seaborn>=0.13
+streamlit>=1.64
+openai>=1.0
+langchain>=1.0
+langchain-openai>=1.0
+python-dotenv>=1.0
